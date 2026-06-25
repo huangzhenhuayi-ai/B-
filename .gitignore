@@ -1,0 +1,8 @@
+data/*.sqlite3
+data/*.sqlite3-*
+reports/*.html
+reports/*.csv
+logs/*.log
+.agents/
+__pycache__/
+*.pyc
