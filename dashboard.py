@@ -7,7 +7,7 @@ import argparse
 import json
 import sqlite3
 import webbrowser
-from datetime import datetime
+from datetime import datetime, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -168,6 +168,15 @@ INDEX_HTML = """<!doctype html>
       background: var(--surface);
       color: var(--ink);
     }
+    input {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 0 11px;
+      background: var(--surface);
+      color: var(--ink);
+    }
+    input::placeholder { color: #93a3b5; }
     .shell {
       width: min(1280px, calc(100% - 28px));
       margin: 0 auto;
@@ -271,7 +280,30 @@ INDEX_HTML = """<!doctype html>
     }
     .bars { grid-column: span 5; }
     .trend { grid-column: span 7; }
+    .search-panel { grid-column: span 12; }
     .table-panel { grid-column: span 12; }
+    .search-tools {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      flex-wrap: wrap;
+      padding: 14px 15px 0;
+    }
+    .search-tools input {
+      flex: 1 1 260px;
+      min-width: min(100%, 260px);
+    }
+    .search-tools select {
+      flex: 0 0 auto;
+    }
+    .search-result {
+      padding: 12px 15px 15px;
+    }
+    .search-summary {
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
     .chart-body {
       height: 360px;
       padding: 14px 15px;
@@ -447,6 +479,7 @@ INDEX_HTML = """<!doctype html>
       .topbar { align-items: flex-start; flex-direction: column; }
       .controls { width: 100%; justify-content: flex-start; }
       .controls > * { flex: 1 1 auto; }
+      .search-tools > * { flex: 1 1 100%; }
       button, select { min-width: 0; }
       .metric { grid-column: span 12; }
       .metric .value { font-size: 24px; }
@@ -528,6 +561,50 @@ INDEX_HTML = """<!doctype html>
           <div class="panel-note" id="trendNote">-</div>
         </div>
         <div class="chart-body" id="trendChart"></div>
+      </div>
+    </section>
+
+    <section class="grid" style="margin-top:14px" aria-label="热词反查">
+      <div class="panel search-panel">
+        <div class="panel-head">
+          <div class="panel-title">热词反查</div>
+          <div class="panel-note" id="searchNote">输入词条后查询最近榜单</div>
+        </div>
+        <div class="search-tools">
+          <input id="searchInput" type="search" placeholder="输入关键词，例如：高考" aria-label="反查关键词">
+          <select id="searchDays" aria-label="近期天数">
+            <option value="7" selected>最近 7 天</option>
+            <option value="14">最近 14 天</option>
+            <option value="30">最近 30 天</option>
+            <option value="3650">全部记录</option>
+          </select>
+          <button id="searchBtn" class="primary">查询</button>
+          <button id="clearSearchBtn">清空</button>
+        </div>
+        <div class="search-result">
+          <div class="search-summary" id="searchSummary">等待输入关键词。</div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>相关词条</th>
+                  <th>分类</th>
+                  <th>最高热度</th>
+                  <th>平均热度</th>
+                  <th>上榜次数</th>
+                  <th>最高排名</th>
+                  <th>最近排名</th>
+                  <th>首次出现</th>
+                  <th>最近出现</th>
+                </tr>
+              </thead>
+              <tbody id="searchBody">
+                <tr><td colspan="10" class="muted">暂无查询。</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -764,6 +841,62 @@ INDEX_HTML = """<!doctype html>
       </tr>`).join("");
     }
 
+    function renderSearchResults(payload) {
+      const body = $("searchBody");
+      const rows = payload.rows || [];
+      $("searchNote").textContent = payload.query
+        ? `${payload.days_label} · Top 100`
+        : "输入词条后查询最近榜单";
+      $("searchSummary").textContent = payload.query
+        ? `关键词“${payload.query}”命中 ${number(payload.total_count)} 个相关词条，当前展示 ${number(rows.length)} 条。`
+        : "等待输入关键词。";
+
+      if (!payload.query) {
+        body.innerHTML = '<tr><td colspan="10" class="muted">暂无查询。</td></tr>';
+        return;
+      }
+      if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="10" class="muted">近期榜单中没有找到相关词条。</td></tr>';
+        return;
+      }
+      body.innerHTML = rows.map((row, index) => `<tr>
+        <td class="rank">${index + 1}</td>
+        <td><div class="keyword">${escapeHtml(row.keyword)}</div></td>
+        <td><span class="tag">${escapeHtml(row.category || "娱乐")}</span></td>
+        <td>${number(row.max_heat_score)}</td>
+        <td>${number(row.avg_heat_score)}</td>
+        <td>${number(row.samples)}</td>
+        <td>#${row.best_rank}</td>
+        <td>#${row.latest_rank}</td>
+        <td>${shortTime(row.first_seen)}</td>
+        <td>${shortTime(row.last_seen)}</td>
+      </tr>`).join("");
+    }
+
+    async function runSearch() {
+      const query = $("searchInput").value.trim();
+      const days = $("searchDays").value || "7";
+      if (!query) {
+        renderSearchResults({ query: "", rows: [], total_count: 0, days_label: "" });
+        return;
+      }
+      try {
+        $("searchBtn").disabled = true;
+        const params = new URLSearchParams({ q: query, days, limit: "100" });
+        const payload = await api(`/api/search?${params}`);
+        renderSearchResults(payload);
+      } catch (error) {
+        showToast(error.message);
+      } finally {
+        $("searchBtn").disabled = false;
+      }
+    }
+
+    function clearSearch() {
+      $("searchInput").value = "";
+      renderSearchResults({ query: "", rows: [], total_count: 0, days_label: "" });
+    }
+
     async function refresh() {
       try {
         setBusy(true);
@@ -803,6 +936,19 @@ INDEX_HTML = """<!doctype html>
     });
     $("refreshBtn").addEventListener("click", refresh);
     $("collectBtn").addEventListener("click", collectNow);
+    $("searchBtn").addEventListener("click", runSearch);
+    $("clearSearchBtn").addEventListener("click", clearSearch);
+    $("searchInput").addEventListener("keydown", async (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        await runSearch();
+      }
+    });
+    $("searchDays").addEventListener("change", async () => {
+      if ($("searchInput").value.trim()) {
+        await runSearch();
+      }
+    });
 
     (async function start() {
       try {
@@ -853,6 +999,12 @@ class Handler(BaseHTTPRequestHandler):
                 top = max(1, min(200, int(query.get("top", ["50"])[0])))
                 category = query.get("category", [CATEGORY_ALL])[0]
                 self.send_json(self.get_summary(date, top, category))
+            elif parsed.path == "/api/search":
+                query = parse_qs(parsed.query)
+                term = query.get("q", [""])[0]
+                days = max(1, min(3650, int(query.get("days", ["7"])[0])))
+                limit = max(1, min(100, int(query.get("limit", ["100"])[0])))
+                self.send_json(self.search_hotwords(term, days, limit))
             else:
                 self.send_error(HTTPStatus.NOT_FOUND, "Not found")
         except Exception as exc:
@@ -943,6 +1095,49 @@ class Handler(BaseHTTPRequestHandler):
             "rows": visible,
         }
 
+    def search_hotwords(self, term: str, days: int, limit: int) -> dict[str, Any]:
+        query = term.strip()
+        days_label = "全部记录" if days >= 3650 else f"最近 {days} 天"
+        if not query:
+            return {
+                "ok": True,
+                "query": "",
+                "days": days,
+                "days_label": days_label,
+                "total_count": 0,
+                "rows": [],
+            }
+
+        cutoff = (bili_hotwords.now_hk().date() - timedelta(days=days - 1)).isoformat()
+        pattern = f"%{escape_like(query)}%"
+        with bili_hotwords.open_db(self.server.db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    fetched_at, rank, keyword, show_name, heat_score, heat_layer,
+                    hot_id, word_type, icon
+                FROM hotword_snapshots
+                WHERE fetched_date >= ?
+                  AND rank <= 100
+                  AND (
+                    keyword LIKE ? ESCAPE '\\' COLLATE NOCASE
+                    OR show_name LIKE ? ESCAPE '\\' COLLATE NOCASE
+                  )
+                ORDER BY fetched_at ASC, rank ASC
+                """,
+                (cutoff, pattern, pattern),
+            ).fetchall()
+
+        summaries = [serialize_summary(row) for row in bili_hotwords.summarize_rows(rows)]
+        return {
+            "ok": True,
+            "query": query,
+            "days": days,
+            "days_label": days_label,
+            "total_count": len(summaries),
+            "rows": summaries[:limit],
+        }
+
 
 def serialize_summary(row: dict[str, Any]) -> dict[str, Any]:
     keyword = row["keyword"]
@@ -966,6 +1161,14 @@ def serialize_summary(row: dict[str, Any]) -> dict[str, Any]:
             for point in row["points"]
         ],
     }
+
+
+def escape_like(value: str) -> str:
+    return (
+        value.replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
