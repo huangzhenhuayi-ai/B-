@@ -20,7 +20,7 @@ import bili_hotwords
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 CATEGORY_ALL = "全部"
-CATEGORIES = ("游戏", "影视", "艺术", "科技", "娱乐", "体育", "明星", "政治", "电竞")
+CATEGORIES = ("游戏", "影视", "艺术", "科技", "娱乐", "体育", "明星", "政治", "社会", "电竞")
 
 
 def has_any(text: str, words: tuple[str, ...]) -> bool:
@@ -30,16 +30,32 @@ def has_any(text: str, words: tuple[str, ...]) -> bool:
 def classify_hotword(keyword: str, show_name: str = "") -> str:
     text = f"{keyword} {show_name}".lower()
 
+    manual_rules = (
+        ("三角洲", "游戏"),
+        ("cs史上最伟大的救赎", "游戏"),
+        ("msi", "电竞"),
+        ("showmaker", "电竞"),
+        ("showmaker不会离开dk", "电竞"),
+        ("黑袍纠察队", "影视"),
+        ("高考查分", "社会"),
+        ("沉浸式高考查分", "社会"),
+        ("高考志愿", "社会"),
+        ("志愿填报", "社会"),
+    )
+    for needle, category in manual_rules:
+        if needle in text:
+            return category
+
     esports_words = (
         "电竞", "赛事", "战队", "选手", "夺冠", "冠军", "赛区", "major", "lpl",
         "kpl", "lol", "英雄联盟", "王者荣耀", "csgo", "cs2", "dota", "ti",
-        "无畏契约", "valorant", "edg", "rng", "blg", "tes", "wbg", "t1",
+        "无畏契约", "valorant", "msi", "edg", "rng", "blg", "tes", "wbg", "t1",
         "faker", "gen", "spirit", "科隆",
     )
     game_words = (
         "游戏", "gta", "gta6", "steam", "任天堂", "switch", "ps5", "xbox",
         "原神", "崩坏", "星穹铁道", "鸣潮", "明日方舟", "黑神话", "塞尔达",
-        "宝可梦", "我的世界", "三角符文", "deltarune", "预购", "通关",
+        "宝可梦", "我的世界", "三角符文", "三角洲", "deltarune", "预购", "通关",
     )
     sports_words = (
         "世界杯", "足球", "篮球", "网球", "排球", "nba", "cba", "英超", "欧冠",
@@ -50,6 +66,11 @@ def classify_hotword(keyword: str, show_name: str = "") -> str:
         "政治", "总统", "首相", "政府", "议会", "选举", "外交", "战争", "乌克兰",
         "以色列", "美国", "英国", "委内瑞拉", "法院", "政策", "特朗普", "拜登",
         "强震", "地震",
+    )
+    social_words = (
+        "社会", "民生", "高考", "中考", "考研", "查分", "志愿填报", "升学",
+        "教育部", "校园", "大学", "就业", "毒品", "医保", "养老", "食品安全",
+        "交通", "房价", "生育", "结婚",
     )
     tech_words = (
         "科技", "ai", "人工智能", "openai", "模型", "机器人", "芯片", "显卡",
@@ -77,6 +98,8 @@ def classify_hotword(keyword: str, show_name: str = "") -> str:
         return "体育"
     if has_any(text, politics_words):
         return "政治"
+    if has_any(text, social_words):
+        return "社会"
     if has_any(text, tech_words):
         return "科技"
     if has_any(text, film_words):
@@ -460,6 +483,7 @@ INDEX_HTML = """<!doctype html>
           <option value="体育">体育</option>
           <option value="明星">明星</option>
           <option value="政治">政治</option>
+          <option value="社会">社会</option>
           <option value="电竞">电竞</option>
         </select>
         <button id="refreshBtn">刷新</button>
