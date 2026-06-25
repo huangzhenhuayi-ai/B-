@@ -804,7 +804,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     collect = subparsers.add_parser("collect", help="Fetch one hotword snapshot.")
-    collect.add_argument("--limit", type=int, default=50, help="Requested keyword count.")
+    collect.add_argument("--limit", type=int, default=100, help="Requested keyword count.")
     collect.add_argument("--timeout", type=float, default=6.0, help="HTTP timeout in seconds.")
     collect.set_defaults(func=command_collect)
 
@@ -820,7 +820,7 @@ def build_parser() -> argparse.ArgumentParser:
     report.set_defaults(func=command_report)
 
     loop = subparsers.add_parser("loop", help="Collect repeatedly in the foreground.")
-    loop.add_argument("--limit", type=int, default=50, help="Requested keyword count.")
+    loop.add_argument("--limit", type=int, default=100, help="Requested keyword count.")
     loop.add_argument("--timeout", type=float, default=6.0, help="HTTP timeout in seconds.")
     loop.add_argument(
         "--interval-minutes",

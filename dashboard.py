@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sqlite3
 import webbrowser
 from datetime import datetime, timedelta
@@ -25,6 +26,66 @@ CATEGORIES = ("游戏", "影视", "艺术", "科技", "娱乐", "体育", "明�
 
 def has_any(text: str, words: tuple[str, ...]) -> bool:
     return any(word in text for word in words)
+
+
+TOPIC_ALIASES = (
+    (("高考", "高考查分", "高考志愿", "高考分数线", "志愿填报"), "高考"),
+    (("科隆", "科隆major"), "科隆"),
+    (("gta6", "gta 6"), "GTA6"),
+    (("三角洲",), "三角洲"),
+    (("三角符文", "deltarune"), "三角符文"),
+    (("msi",), "MSI"),
+    (("showmaker",), "ShowMaker"),
+    (("dk",), "DK"),
+    (("黑袍纠察队",), "黑袍纠察队"),
+    (("cs史上最伟大的救赎",), "CS史上最伟大的救赎"),
+    (("神奇数字马戏团",), "神奇数字马戏团"),
+    (("世界杯",), "世界杯"),
+    (("内马尔",), "内马尔"),
+    (("巴西",), "巴西"),
+    (("苏格兰",), "苏格兰"),
+    (("摩洛哥",), "摩洛哥"),
+    (("海地",), "海地"),
+    (("委内瑞拉",), "委内瑞拉"),
+    (("英国",), "英国"),
+    (("韩红",), "韩红"),
+    (("白鹿",), "白鹿"),
+    (("章泽天",), "章泽天"),
+    (("浪姐",), "浪姐"),
+    (("歌剧",), "歌剧"),
+    (("steam",), "Steam"),
+    (("ign",), "IGN"),
+)
+
+TOPIC_STOP_WORDS = {
+    "the", "and", "vlog", "top", "new", "vs", "of", "in", "on",
+    "公布", "售价", "指南", "流程", "实况", "测评", "值得", "真相",
+    "老师", "锐评", "沉浸式", "记录", "瞬间", "引发", "争议",
+    "五公",
+}
+
+
+def extract_topics(keyword: str, show_name: str = "") -> set[str]:
+    text = f"{keyword} {show_name}".strip()
+    lower_text = text.lower()
+    topics: set[str] = set()
+
+    for needles, label in TOPIC_ALIASES:
+        if any(needle in lower_text for needle in needles):
+            topics.add(label)
+
+    for token in re.findall(r"[A-Za-z][A-Za-z0-9+-]{1,}", text):
+        clean = token.strip()
+        if clean.lower() not in TOPIC_STOP_WORDS:
+            topics.add(clean.upper() if clean.isupper() or any(ch.isdigit() for ch in clean) else clean)
+
+    for token in re.findall(r"[\u4e00-\u9fff]{2,8}", text):
+        if any(stop in token for stop in TOPIC_STOP_WORDS):
+            continue
+        if not any(token in label or label in token for label in topics):
+            topics.add(token)
+
+    return topics
 
 
 def classify_hotword(keyword: str, show_name: str = "") -> str:
@@ -280,8 +341,49 @@ INDEX_HTML = """<!doctype html>
     }
     .bars { grid-column: span 5; }
     .trend { grid-column: span 7; }
+    .topic-panel { grid-column: span 12; }
     .search-panel { grid-column: span 12; }
     .table-panel { grid-column: span 12; }
+    .topic-list {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      padding: 14px 15px 15px;
+    }
+    .topic-chip {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 9px;
+      min-height: 44px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      text-align: left;
+      box-shadow: none;
+    }
+    .topic-chip:hover { border-color: var(--blue); }
+    .topic-rank {
+      color: var(--pink);
+      font-weight: 800;
+      font-size: 15px;
+    }
+    .topic-term {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 750;
+    }
+    .topic-count {
+      color: #1d4f73;
+      background: #eaf6fb;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
     .search-tools {
       display: flex;
       align-items: center;
@@ -470,6 +572,7 @@ INDEX_HTML = """<!doctype html>
     }
     @media (max-width: 980px) {
       .metric { grid-column: span 6; }
+      .topic-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .bars, .trend { grid-column: span 12; }
       .chart-body { height: 330px; }
       .bars .chart-body { height: auto; min-height: 0; }
@@ -482,6 +585,7 @@ INDEX_HTML = """<!doctype html>
       .search-tools > * { flex: 1 1 100%; }
       button, select { min-width: 0; }
       .metric { grid-column: span 12; }
+      .topic-list { grid-template-columns: 1fr; }
       .metric .value { font-size: 24px; }
       .panel-head { align-items: flex-start; flex-direction: column; height: auto; padding: 12px 13px; }
       .chart-body { height: 300px; padding: 12px; }
@@ -524,7 +628,19 @@ INDEX_HTML = """<!doctype html>
       </div>
     </header>
 
-    <section class="grid" aria-label="指标">
+    <section class="grid" aria-label="当日关键词">
+      <div class="panel topic-panel">
+        <div class="panel-head">
+          <div class="panel-title">当日关键词 Top 10</div>
+          <div class="panel-note" id="topicNote">按当天 Top 100 去重词条统计</div>
+        </div>
+        <div class="topic-list" id="topicList">
+          <div class="empty">暂无数据</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid" style="margin-top:14px" aria-label="指标">
       <div class="metric">
         <div class="label">关键词</div>
         <div class="value" id="metricKeywords">-</div>
@@ -740,9 +856,32 @@ INDEX_HTML = """<!doctype html>
         ? `${payload.category === "全部" ? "全部分类" : payload.category} · 展示 ${number(rows.length)} / 共 ${number(payload.keyword_count)} 条`
         : "-";
 
+      renderTopics(payload.topics || [], payload.date);
       renderBars(barRows);
       renderTrend(top);
       renderTable(rows);
+    }
+
+    function renderTopics(topics, date) {
+      const root = $("topicList");
+      $("topicNote").textContent = topics.length
+        ? `${date} · 当天 Top 100 去重词条统计`
+        : "按当天 Top 100 去重词条统计";
+      if (!topics.length) {
+        root.innerHTML = '<div class="empty">暂无数据</div>';
+        return;
+      }
+      root.innerHTML = topics.map((topic, index) => `<button type="button" class="topic-chip" data-term="${escapeHtml(topic.term)}" title="${escapeHtml((topic.examples || []).join(" / "))}">
+        <span class="topic-rank">${index + 1}</span>
+        <span class="topic-term">${escapeHtml(topic.term)}</span>
+        <span class="topic-count">${number(topic.count)} 次</span>
+      </button>`).join("");
+      root.querySelectorAll(".topic-chip").forEach((button) => {
+        button.addEventListener("click", async () => {
+          $("searchInput").value = button.dataset.term || "";
+          await runSearch();
+        });
+      });
     }
 
     function renderBars(rows) {
@@ -1014,7 +1153,7 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         try:
             if parsed.path == "/api/collect":
-                run_id = bili_hotwords.collect_once(self.server.db_path, limit=50, timeout=6.0)
+                run_id = bili_hotwords.collect_once(self.server.db_path, limit=100, timeout=6.0)
                 report_date = bili_hotwords.now_hk().date().isoformat()
                 bili_hotwords.build_report(self.server.db_path, self.server.report_dir, report_date, 50)
                 with bili_hotwords.open_db(self.server.db_path) as conn:
@@ -1090,6 +1229,7 @@ class Handler(BaseHTTPRequestHandler):
             "total_keyword_count": len(serialized),
             "category": category,
             "categories": [CATEGORY_ALL, *CATEGORIES],
+            "topics": build_daily_topics(raw_rows),
             "first_snapshot": first_snapshot,
             "last_snapshot": last_snapshot,
             "rows": visible,
@@ -1137,6 +1277,64 @@ class Handler(BaseHTTPRequestHandler):
             "total_count": len(summaries),
             "rows": summaries[:limit],
         }
+
+
+def build_daily_topics(rows: list[sqlite3.Row], limit: int = 10) -> list[dict[str, Any]]:
+    unique_hotwords: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        rank = int(row["rank"] or 9999)
+        if rank > 100:
+            continue
+
+        keyword = str(row["keyword"] or "").strip()
+        if not keyword:
+            continue
+
+        existing = unique_hotwords.setdefault(
+            keyword,
+            {
+                "keyword": keyword,
+                "show_name": row["show_name"] or keyword,
+                "best_rank": rank,
+                "max_heat_score": int(row["heat_score"] or 0),
+            },
+        )
+        existing["best_rank"] = min(int(existing["best_rank"]), rank)
+        existing["max_heat_score"] = max(
+            int(existing["max_heat_score"]),
+            int(row["heat_score"] or 0),
+        )
+
+    topic_stats: dict[str, dict[str, Any]] = {}
+    for item in unique_hotwords.values():
+        topics = extract_topics(item["keyword"], item["show_name"])
+        for topic in topics:
+            stat = topic_stats.setdefault(
+                topic,
+                {
+                    "term": topic,
+                    "count": 0,
+                    "max_heat_score": 0,
+                    "best_rank": 9999,
+                    "examples": [],
+                },
+            )
+            stat["count"] += 1
+            stat["max_heat_score"] = max(stat["max_heat_score"], int(item["max_heat_score"]))
+            stat["best_rank"] = min(stat["best_rank"], int(item["best_rank"]))
+            if len(stat["examples"]) < 3:
+                stat["examples"].append(item["keyword"])
+
+    topics = list(topic_stats.values())
+    topics.sort(
+        key=lambda item: (
+            -int(item["count"]),
+            -int(item["max_heat_score"]),
+            int(item["best_rank"]),
+            item["term"],
+        )
+    )
+    return topics[:limit]
 
 
 def serialize_summary(row: dict[str, Any]) -> dict[str, Any]:
