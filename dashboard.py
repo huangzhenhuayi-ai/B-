@@ -19,6 +19,73 @@ import bili_hotwords
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
+CATEGORY_ALL = "全部"
+CATEGORIES = ("游戏", "影视", "艺术", "科技", "娱乐", "体育", "明星", "政治", "电竞")
+
+
+def has_any(text: str, words: tuple[str, ...]) -> bool:
+    return any(word in text for word in words)
+
+
+def classify_hotword(keyword: str, show_name: str = "") -> str:
+    text = f"{keyword} {show_name}".lower()
+
+    esports_words = (
+        "电竞", "赛事", "战队", "选手", "夺冠", "冠军", "赛区", "major", "lpl",
+        "kpl", "lol", "英雄联盟", "王者荣耀", "csgo", "cs2", "dota", "ti",
+        "无畏契约", "valorant", "edg", "rng", "blg", "tes", "wbg", "t1",
+        "faker", "gen", "spirit", "科隆",
+    )
+    game_words = (
+        "游戏", "gta", "gta6", "steam", "任天堂", "switch", "ps5", "xbox",
+        "原神", "崩坏", "星穹铁道", "鸣潮", "明日方舟", "黑神话", "塞尔达",
+        "宝可梦", "我的世界", "三角符文", "deltarune", "预购", "通关",
+    )
+    sports_words = (
+        "世界杯", "足球", "篮球", "网球", "排球", "nba", "cba", "英超", "欧冠",
+        "中超", "进球", "巴西", "苏格兰", "摩洛哥", "海地", "内马尔", "梅西",
+        "c罗", "奥运", "世预赛",
+    )
+    politics_words = (
+        "政治", "总统", "首相", "政府", "议会", "选举", "外交", "战争", "乌克兰",
+        "以色列", "美国", "英国", "委内瑞拉", "法院", "政策", "特朗普", "拜登",
+        "强震", "地震",
+    )
+    tech_words = (
+        "科技", "ai", "人工智能", "openai", "模型", "机器人", "芯片", "显卡",
+        "英伟达", "nvidia", "手机", "苹果", "华为", "小米", "电脑", "航天",
+        "火箭", "新能源",
+    )
+    film_words = (
+        "电影", "电视剧", "影视", "导演", "票房", "预告", "dc", "漫威", "超级少女",
+        "三体", "地球往事", "动画", "动漫", "番剧", "结局", "神奇数字马戏团",
+    )
+    art_words = (
+        "艺术", "歌剧", "音乐", "歌曲", "舞蹈", "绘画", "美术", "钢琴", "乐队",
+        "演唱会", "古典", "唱功", "豪情在天",
+    )
+    celebrity_words = (
+        "明星", "艺人", "演员", "歌手", "偶像", "爱豆", "韩红", "白鹿", "章泽天",
+        "王强",
+    )
+
+    if has_any(text, esports_words):
+        return "电竞"
+    if has_any(text, game_words):
+        return "游戏"
+    if has_any(text, sports_words):
+        return "体育"
+    if has_any(text, politics_words):
+        return "政治"
+    if has_any(text, tech_words):
+        return "科技"
+    if has_any(text, film_words):
+        return "影视"
+    if has_any(text, art_words):
+        return "艺术"
+    if has_any(text, celebrity_words):
+        return "明星"
+    return "娱乐"
 
 
 INDEX_HTML = """<!doctype html>
@@ -186,17 +253,21 @@ INDEX_HTML = """<!doctype html>
       height: 360px;
       padding: 14px 15px;
     }
+    .bars .chart-body {
+      height: auto;
+      min-height: 360px;
+    }
     .bar-list {
       display: grid;
-      grid-auto-rows: minmax(30px, auto);
-      gap: 8px;
+      grid-auto-rows: minmax(26px, auto);
+      gap: 7px;
     }
     .bar-row {
       display: grid;
       grid-template-columns: 34px minmax(110px, 1fr) 92px;
       gap: 10px;
       align-items: center;
-      min-height: 30px;
+      min-height: 26px;
     }
     .bar-rank {
       color: var(--pink);
@@ -297,6 +368,18 @@ INDEX_HTML = """<!doctype html>
     .muted { color: var(--muted); }
     .good { color: var(--green); font-weight: 700; }
     .warn { color: var(--amber); font-weight: 700; }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 0 9px;
+      border-radius: 999px;
+      color: #1d4f73;
+      background: #eaf6fb;
+      font-weight: 700;
+      font-size: 12px;
+      white-space: nowrap;
+    }
     .mini {
       width: 130px;
       height: 28px;
@@ -334,6 +417,7 @@ INDEX_HTML = """<!doctype html>
       .metric { grid-column: span 6; }
       .bars, .trend { grid-column: span 12; }
       .chart-body { height: 330px; }
+      .bars .chart-body { height: auto; min-height: 0; }
     }
     @media (max-width: 700px) {
       .shell { width: min(100% - 18px, 1280px); padding-top: 8px; }
@@ -345,6 +429,7 @@ INDEX_HTML = """<!doctype html>
       .metric .value { font-size: 24px; }
       .panel-head { align-items: flex-start; flex-direction: column; height: auto; padding: 12px 13px; }
       .chart-body { height: 300px; padding: 12px; }
+      .bars .chart-body { height: auto; min-height: 0; }
     }
   </style>
 </head>
@@ -364,6 +449,18 @@ INDEX_HTML = """<!doctype html>
           <option value="20">Top 20</option>
           <option value="50" selected>Top 50</option>
           <option value="100">Top 100</option>
+        </select>
+        <select id="categorySelect" aria-label="分类">
+          <option value="全部" selected>全部分类</option>
+          <option value="游戏">游戏</option>
+          <option value="影视">影视</option>
+          <option value="艺术">艺术</option>
+          <option value="科技">科技</option>
+          <option value="娱乐">娱乐</option>
+          <option value="体育">体育</option>
+          <option value="明星">明星</option>
+          <option value="政治">政治</option>
+          <option value="电竞">电竞</option>
         </select>
         <button id="refreshBtn">刷新</button>
         <button id="collectBtn" class="primary">采集</button>
@@ -422,6 +519,7 @@ INDEX_HTML = """<!doctype html>
               <tr>
                 <th>#</th>
                 <th>关键词</th>
+                <th>分类</th>
                 <th>最高热度</th>
                 <th>平均热度</th>
                 <th>上榜次数</th>
@@ -445,6 +543,7 @@ INDEX_HTML = """<!doctype html>
     const state = {
       date: "",
       top: 50,
+      category: "全部",
       rows: [],
       snapshotCount: 0,
       loading: false
@@ -506,7 +605,13 @@ INDEX_HTML = """<!doctype html>
     }
 
     async function loadSummary() {
-      const params = new URLSearchParams({ date: state.date, top: String(state.top) });
+      state.top = Number($("topSelect").value || state.top || 50);
+      state.category = $("categorySelect").value || "全部";
+      const params = new URLSearchParams({
+        date: state.date,
+        top: String(state.top),
+        category: state.category
+      });
       const payload = await api(`/api/summary?${params}`);
       state.rows = payload.rows;
       state.snapshotCount = payload.snapshot_count;
@@ -527,11 +632,14 @@ INDEX_HTML = """<!doctype html>
       $("metricHeatSub").textContent = top ? top.keyword : "-";
       $("metricTop").textContent = top ? `#${top.best_rank}` : "-";
       $("metricTopSub").textContent = top ? top.keyword : "-";
-      $("barsNote").textContent = rows.length ? `${rows.length} 条` : "-";
+      const barRows = rows.slice(0, 10);
+      $("barsNote").textContent = barRows.length ? `Top ${barRows.length}` : "-";
       $("trendNote").textContent = top ? top.keyword : "-";
-      $("tableNote").textContent = rows.length ? `${payload.date}` : "-";
+      $("tableNote").textContent = rows.length
+        ? `${payload.category === "全部" ? "全部分类" : payload.category} · 展示 ${number(rows.length)} / 共 ${number(payload.keyword_count)} 条`
+        : "-";
 
-      renderBars(rows.slice(0, 12));
+      renderBars(barRows);
       renderTrend(top);
       renderTable(rows);
     }
@@ -613,12 +721,13 @@ INDEX_HTML = """<!doctype html>
     function renderTable(rows) {
       const body = $("tableBody");
       if (!rows.length) {
-        body.innerHTML = '<tr><td colspan="11" class="muted">暂无数据</td></tr>';
+        body.innerHTML = '<tr><td colspan="12" class="muted">暂无数据</td></tr>';
         return;
       }
       body.innerHTML = rows.map((row, index) => `<tr>
         <td class="rank">${index + 1}</td>
         <td><div class="keyword">${escapeHtml(row.keyword)}</div></td>
+        <td><span class="tag">${escapeHtml(row.category || "娱乐")}</span></td>
         <td>${number(row.max_heat_score)}</td>
         <td>${number(row.avg_heat_score)}</td>
         <td>${number(row.samples)}</td>
@@ -662,6 +771,10 @@ INDEX_HTML = """<!doctype html>
     });
     $("topSelect").addEventListener("change", async (event) => {
       state.top = Number(event.target.value);
+      await refresh();
+    });
+    $("categorySelect").addEventListener("change", async (event) => {
+      state.category = event.target.value;
       await refresh();
     });
     $("refreshBtn").addEventListener("click", refresh);
@@ -714,7 +827,8 @@ class Handler(BaseHTTPRequestHandler):
                 query = parse_qs(parsed.query)
                 date = query.get("date", [bili_hotwords.now_hk().date().isoformat()])[0]
                 top = max(1, min(200, int(query.get("top", ["50"])[0])))
-                self.send_json(self.get_summary(date, top))
+                category = query.get("category", [CATEGORY_ALL])[0]
+                self.send_json(self.get_summary(date, top, category))
             else:
                 self.send_error(HTTPStatus.NOT_FOUND, "Not found")
         except Exception as exc:
@@ -772,7 +886,7 @@ class Handler(BaseHTTPRequestHandler):
             "dates": dates,
         }
 
-    def get_summary(self, date: str, top: int) -> dict[str, Any]:
+    def get_summary(self, date: str, top: int, category: str) -> dict[str, Any]:
         with bili_hotwords.open_db(self.server.db_path) as conn:
             raw_rows = bili_hotwords.load_day_rows(conn, date)
             snapshot_count = conn.execute(
@@ -781,7 +895,14 @@ class Handler(BaseHTTPRequestHandler):
             ).fetchone()[0]
 
         summaries = bili_hotwords.summarize_rows(raw_rows)
-        visible = [serialize_summary(row) for row in summaries[:top]]
+        serialized = [serialize_summary(row) for row in summaries]
+        if category not in CATEGORIES:
+            category = CATEGORY_ALL
+        if category == CATEGORY_ALL:
+            filtered = serialized
+        else:
+            filtered = [row for row in serialized if row["category"] == category]
+        visible = filtered[:top]
         first_snapshot = min([row["fetched_at"] for row in raw_rows], default="")
         last_snapshot = max([row["fetched_at"] for row in raw_rows], default="")
         return {
@@ -789,7 +910,10 @@ class Handler(BaseHTTPRequestHandler):
             "date": date,
             "generated_at": bili_hotwords.now_hk().strftime("%Y-%m-%d %H:%M:%S"),
             "snapshot_count": int(snapshot_count),
-            "keyword_count": len(summaries),
+            "keyword_count": len(filtered),
+            "total_keyword_count": len(serialized),
+            "category": category,
+            "categories": [CATEGORY_ALL, *CATEGORIES],
             "first_snapshot": first_snapshot,
             "last_snapshot": last_snapshot,
             "rows": visible,
@@ -797,9 +921,12 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def serialize_summary(row: dict[str, Any]) -> dict[str, Any]:
+    keyword = row["keyword"]
+    show_name = row["show_name"]
     return {
-        "keyword": row["keyword"],
-        "show_name": row["show_name"],
+        "keyword": keyword,
+        "show_name": show_name,
+        "category": classify_hotword(keyword, show_name),
         "daily_score": int(row["daily_score"]),
         "max_heat_score": int(row["max_heat_score"]),
         "avg_heat_score": int(row["avg_heat_score"]),
